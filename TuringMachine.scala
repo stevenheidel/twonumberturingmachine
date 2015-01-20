@@ -8,39 +8,42 @@ case object Right extends Direction
 case object Neither extends Direction
 
 case class Command(
-  val toWrite: Alphabet,
-  val toMove: Direction,
-  val toState: Int
+  toWrite: Alphabet,
+  toMove: Direction,
+  toState: Int
 )
 
 sealed trait AnyState
 case class State(
-  val onZero: Command,
-  val onOne: Command
+  onZero: Command,
+  onOne: Command
 ) extends AnyState
 case object AcceptState extends AnyState
 
-case class TuringMachine(
+case class TuringMachine (
   // list of states, initial is first by default
   states: Seq[AnyState],
   // current state
-  private val currentState: Int = 1,
+  currentState: Int = 1,
   // all the tape left of the pointer
-  private val left: Long = 0,
+  left: Long = 0,
   // all the tape right of and including the pointer, then reversed
-  private val right: Long = 0
+  right: Long = 0
 ) {
   def setInput(input: Seq[Alphabet]): TuringMachine = {
-    val inputInBinary: Long = input.foldRight(0L) { (i, sum) => i match {
-      case Zero => (sum << 1)
-      case One => (sum << 1) + 1
-    }}
+    if (input.length > TuringMachine.maxLength)
+      throw new IllegalStateException("Tape bound exceeded by input")
+
+    val inputInBinary: Long = input.foldRight(0L) {
+      case (Zero, x) => (x << 1)
+      case (One, x) => (x << 1) + 1
+    }
 
     copy(right = inputInBinary)
   }
 
-  // states use 1-based indexing
   def step: Option[TuringMachine] = {
+    // states use 1-based indexing
     if (!states.isDefinedAt(currentState - 1))
       throw new IllegalStateException(s"Literally, an illegal state: $currentState")
 
@@ -76,7 +79,7 @@ case class TuringMachine(
   // this is the direction to move the head, not to move the tape
   private def move(direction: Direction): TuringMachine = direction match {
     case Left =>
-      if (right >= TuringMachine.maxVal)
+      if (right > TuringMachine.maxVal)
         throw new IllegalStateException("Tape bound exceeded on right side")
 
       copy(
@@ -84,7 +87,7 @@ case class TuringMachine(
         right = (right << 1) + (left & 1)
       )
     case Right =>
-      if (left >= TuringMachine.maxVal)
+      if (left > TuringMachine.maxVal)
         throw new IllegalStateException("Tape bound exceeded on left side")
 
       copy(
@@ -102,10 +105,10 @@ case class TuringMachine(
 object TuringMachine {
   // max distance from starting point that a 1 can be written
   val maxLength = 40
-  val maxVal = 1L << maxLength - 1
+  val maxVal = (1L << maxLength - 1) - 1
 
   def run(machine: TuringMachine): Stream[TuringMachine] = {
-    // Unfold function from Haskell on one type and to a stream instead
+    // unfold function from Haskell on one type and to a stream instead
     def unfoldRight[A](z: A)(f: A => Option[A]): Stream[A] = z #:: (f(z) match {
       case Some(a) => unfoldRight(a)(f)
       case None => Stream.empty
@@ -116,7 +119,7 @@ object TuringMachine {
 }
 
 object Main extends App {
-  // A 3-state, 2-symbol busy beaver
+  // a 3-state, 2-symbol busy beaver
   val busyBeaverStates = Seq(
     State(
       Command(One, Right, 2),
@@ -135,10 +138,10 @@ object Main extends App {
 
   val busyBeaver = TuringMachine(busyBeaverStates).setInput(Seq(Zero))
 
+  val outputFormat = s"%s\n%-${TuringMachine.maxLength}d^%${TuringMachine.maxLength - 1}d\n\n"
+
   TuringMachine.run(busyBeaver).toList.map { step =>
-    println(step.getTape)
-    println(" " * TuringMachine.maxLength + "^")
-    println()
+    printf(outputFormat, step.getTape, step.left, step.right)
   }
 }
 
